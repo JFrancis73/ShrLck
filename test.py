@@ -1,102 +1,107 @@
 import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog
 import os
 import subprocess
-from ScanDevice import FindDevices
-# Dummy list for drives (replace with actual drive retrieval logic)
-drives = FindDevices().keys()
+from prettytable import PrettyTable
+import opencage.geocoder
 
-def File_Recovery():
-    def handle_image_checkbox(var):
-        # Implement logic here based on the variable state (True/False)
-        # For example, enable/disable additional widgets related to drive imaging
-        if var.get():
-            print("Drive Imaging selected")
+def MetaData():
+    def choose_file_type():
+        global file_type
+        file_type = file_type_var.get()
+        file_type_window.destroy()
+        root.deiconify()
+
+    def get_file_path():
+        file_path = filedialog.askopenfilename()
+        if file_path:
+            entry_path.delete(0, tk.END)
+            entry_path.insert(0, file_path)
+
+    def store_file_path():
+        global selected_file_path
+        selected_file_path = entry_path.get()
+        metadata = get_file_metadata(selected_file_path)
+        if metadata:
+            print_metadata_table(metadata)
         else:
-            print("Drive Imaging deselected")
+            print("Please select a file.")
 
+    def get_file_metadata(file_path):
+        try:
+            metadata_output = subprocess.check_output(["exiftool", file_path]).decode("utf-8")
+            metadata_lines = metadata_output.strip().split('\n')
+            metadata_dict = {}
+            for line in metadata_lines:
+                key, value = line.split(':', 1)
+                metadata_dict[key.strip()] = value.strip()
 
-    def get_selected_info():
-        # This function collects the selected information from the window
-        drive = drive_var.get()
-        drive = "/dev/sdc"
-        file_types = " -t "
-        if var1.get():
-            file_types += "png,jpg,gif,"
-        if var2.get():
-            file_types += "doc,pdf,"
-        if var3.get():
-            file_types += "mp4,avi,"
-        file_types = file_types[:-1]
-        create_image = image_var.get()
-        print(f"Selected Drive: {drive}")
-        print(f"Selected File Types: {', '.join(file_types)}")
-        print(f"Create Drive Image: {create_image}")
-        os.system("foremost -q -i "+drive+file_types+" -T -v")
+            if 'GPS Latitude' in metadata_dict and 'GPS Longitude' in metadata_dict:
+                latitude = metadata_dict['GPS Latitude']
+                longitude = metadata_dict['GPS Longitude']
+                lat_degrees, lat_minutes, lat_seconds = map(float, latitude.split())
+                lon_degrees, lon_minutes, lon_seconds = map(float, longitude.split())
+                lat_decimal = lat_degrees + (lat_minutes / 60) + (lat_seconds / 3600)
+                lon_decimal = lon_degrees + (lon_minutes / 60) + (lon_seconds / 3600)
+                geocoder = opencage.geocoder.OpenCageGeocode('YOUR_OPENCAGE_API_KEY')
 
+                result = geocoder.reverse_geocode(lat_decimal, lon_decimal)
 
-    def close_window():
-        window.destroy()
+                if result and len(result):
+                    metadata_dict['Location'] = result[0]['formatted']
+                else:
+                    metadata_dict['Location'] = 'Location not found'
 
-    # Create the main window
-    window = tk.Tk()
-    window.title("File Recovery App")
+            return metadata_dict
+        except Exception as e:
+            print("Error:", e)
+            return None
 
-    # Create a frame to group elements (improves organization)
-    main_frame = tk.Frame(window)
-    main_frame.pack(padx=10, pady=10)
+    def print_metadata_table(metadata):
+        table = PrettyTable(['Property', 'Value'])
+        for key, value in metadata.items():
+            table.add_row([key, value])
+        print(table)
 
-    # Frame for drive selection (label and dropdown side-by-side)
-    drive_frame = tk.Frame(main_frame)
-    drive_frame.pack()
+        if 'Location' in metadata:
+            label_location.config(text="Location:", font=('Arial', 10, 'bold'))
+            entry_location.delete(0, tk.END)
+            entry_location.insert(0, metadata['Location'])
+            label_location.grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+            entry_location.grid(row=3, column=1, padx=5, pady=5, columnspan=2, sticky=tk.W)
 
-    # Drive Selection Label
-    drive_label = tk.Label(drive_frame, text="Select Drive:")
-    drive_label.pack(side="left")
+    file_type_window = tk.Tk()
+    file_type_window.title("Choose File Type")
+    file_type_var = tk.StringVar()
+    file_type_label = ttk.Label(file_type_window, text="Choose file type to extract metadata from:")
+    file_type_label.pack(padx=10, pady=10)
+    file_type_combobox = ttk.Combobox(file_type_window, textvariable=file_type_var, values=["Image", "Other"])
+    file_type_combobox.pack(padx=10, pady=5)
+    file_type_button = ttk.Button(file_type_window, text="Choose", command=choose_file_type)
+    file_type_button.pack(padx=10, pady=5)
 
-    # Drive Selection Dropdown
-    drive_var = tk.StringVar(window)
-    drive_menu = tk.OptionMenu(drive_frame, drive_var, *drives)
-    drive_menu.pack(side="left", padx=5)  # Add padding between label and dropdown
+    file_type = None
 
-    # "Create Drive Image" Checkbox with padding
-    image_var = tk.IntVar()
-    image_checkbox = tk.Checkbutton(
-        main_frame, text="Create Drive Image (Before Recovery)", variable=image_var, command=lambda: handle_image_checkbox(image_var)
-    )
-    image_checkbox.pack(pady=5)  # Add padding above and below the checkbox
+    root = tk.Tk()
+    root.title("File Metadata Extractor")
 
-    # File Type Selection Label with larger font size and padding
-    file_type_label = tk.Label(main_frame, text="Select File Types:", font=("Arial", 12, "bold"))
-    file_type_label.pack(pady=5)  # Add padding above and below the label
+    label_path = tk.Label(root, text="File Path:")
+    label_path.grid(row=0, column=0, padx=5, pady=5)
+    entry_path = tk.Entry(root, width=40)
+    entry_path.grid(row=0, column=1, padx=5, pady=5, columnspan=2)
+    button_browse = tk.Button(root, text="Browse", command=get_file_path)
+    button_browse.grid(row=0, column=3, padx=5, pady=5)
+    button_submit = tk.Button(root, text="Extract Metadata", command=store_file_path)
+    button_submit.grid(row=1, column=1, columnspan=2, padx=5, pady=5)
 
-    # Checkboxes for file types with left alignment
-    var1 = tk.IntVar()
-    var2 = tk.IntVar()
-    var3 = tk.IntVar()
+    label_location = tk.Label(root, text="", font=('Arial', 10, 'bold'))
+    entry_location = tk.Entry(root, width=40)
 
-    file_type_checkbox1 = tk.Checkbutton(main_frame, text="Images (.jpg, .png)", variable=var1, anchor="w")
-    file_type_checkbox1.pack(anchor="w", pady=5)  # Add padding below the checkbox
+    button_close = tk.Button(root, text="Close", command=root.quit)
+    button_close.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
+    selected_file_path = None
+    root.withdraw()
 
-    file_type_checkbox2 = tk.Checkbutton(main_frame, text="Documents (.docx, .pdf)", variable=var2, anchor="w")
-    file_type_checkbox2.pack(anchor="w", pady=5)  # Add padding below the checkbox
-
-    file_type_checkbox3 = tk.Checkbutton(main_frame, text="Videos (.mp4, .avi)", variable=var3, anchor="w")
-    file_type_checkbox3.pack(anchor="w", pady=5)  # Add padding below the checkbox
-
-    # Buttons in a frame side-by-side (using pack with side="left")
-    button_frame = tk.Frame(main_frame)
-    button_frame.pack()
-
-    recover_button = tk.Button(button_frame, text="Recover Files", command=get_selected_info)
-    recover_button.pack(side="left", padx=5, pady=5)  # Add padding
-
-    close_button = tk.Button(button_frame, text="Close", command=close_window)
-    close_button.pack(side="left", padx=5, pady=5)  # Add padding
-
-    # Keep the window running
-    window.mainloop()
-
-print(FindDevices())
-syscmd = subprocess.run(["sudo","lsblk","-o","NAME,LABEL"],stdout=subprocess.PIPE,text=True)
-#print(syscmd.stdout)
-File_Recovery()
+    file_type_window.mainloop()
+MetaData()
