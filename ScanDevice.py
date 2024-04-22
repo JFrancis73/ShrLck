@@ -40,8 +40,10 @@ def Scan(devl):
 def FindDevices():
         syscmd = subprocess.run(["sudo","lsblk","-o","NAME,LABEL"],stdout=subprocess.PIPE,text=True)
         ls = [x[x.rfind(" ")+1:] for x in syscmd.stdout.split("\n") if len(x.strip().split(" "))>1]
+        ls1 = [x[x.rfind('─')+1:x.rfind(" ")] for x in syscmd.stdout.split("\n") if len(x.strip().split(" "))>1]
         ls.pop(0)
-        return ls
+        ls1.pop(0)
+        return dict(zip(ls,ls1))
 
 def FindEncryptedFiles(x):  #Pass Scan(devlabel) if you don't have a list already'
     encrlist = []
@@ -66,10 +68,12 @@ def ScanSAM():
 				print("I AM HERE")
 				os.system("sudo cp /tmp/tmpmount/Windows/System32/config/SAM .")
 				os.system("sudo cp /tmp/tmpmount/Windows/System32/config/SYSTEM .")
+				return True
 			print("Progress")
 			os.system("sudo umount "+Path1)
+	return False
 
-ScanSAM()
+#ScanSAM()
 #p = "/dev/nvme1n1p4"
 #print(Scan("PureArch"))
 #x = Scan("PureArch")

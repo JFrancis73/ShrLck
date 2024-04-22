@@ -43,12 +43,11 @@ def JohnTR(LC,UC,NUM,SC,minlen,maxlen,filetype):
                     os.system("john --format="+filetype+" --incremental="+imode+" -min-len="+minlen+" -max-len="+maxlen+" /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
                     os.system("john --format="+filetype+" --show /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
 """
-def JohnTR(LC,UC,NUM,SC,minlen,maxlen,filetype,jhash):
+def JohnTR(LC,UC,NUM,SC,minlen,maxlen,filetype,jhash,dictionary=False):
 
     if filetype in "docx pptx xlsx":
         filetype = "office"
     #os.system("echo "+jhash.stdout.replace("$","\$")+" 1> /tmp/PassHash.txt")
-    os.system("cat /tmp/PassHash.txt")
     if not SC=='n':
         imode = "ASCII"
     elif UC+LC+NUM=='nny':
@@ -67,12 +66,13 @@ def JohnTR(LC,UC,NUM,SC,minlen,maxlen,filetype,jhash):
         imode = "UpperNum"
     else:
         imode = "ASCII"
-    if imode == "Digits":
-        os.system("john --format="+filetype+" --incremental="+imode+" -min-len="+minlen+" -max-len="+maxlen+" /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
-        os.system("john --format="+filetype+" --show /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
-    else:
-        os.system("john --format="+filetype+" --wordlist=CustomPasswordList.txt -min-len="+minlen+" -max-len="+maxlen+" /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
-        os.system("john --format="+filetype+" --show /tmp/PassHash.txt > /home/jfrans/Desktop/Password.txt")
+
+    if dictionary:
+        os.system("john --format="+filetype+" --wordlist=password.lst -min-len="+minlen+" -max-len="+maxlen+" "+jhash+" > /tmp/ShrLck_Password.txt")
+
+    os.system("john --format="+filetype+" --incremental="+imode+" -min-len="+minlen+" -max-len="+maxlen+" "+jhash+" > /tmp/ShrLck_Password.txt")
+    os.system("john --format="+filetype+" --show "+jhash+" > /tmp/ShrLck_Password.txt")
+
 
 def HashCat(LC,UC,NUM,SC,minlen,maxlen,jhash):
     charset = ''
@@ -120,7 +120,11 @@ def isEncrypted(path,filetype):
             return False
     return True
 
-def CrackNTLM(LC,UC,NUM,SC,minlen,maxlen,hsh):
+def CrackNTLM(LC,UC,NUM,SC,minlen,maxlen,hsh,gpu,dictionary=False):
+    if gpu == "n":
+        JohnTR(LC,UC,NUM,SC,minlen,maxlen,"NT",hsh,dictionary)
+        return
+
     charset = ''
     if not LC.lower() == 'n':
         charset += '?l'
@@ -131,14 +135,17 @@ def CrackNTLM(LC,UC,NUM,SC,minlen,maxlen,hsh):
     if not SC.lower() == 'n':
         charset += '?s'
 
+    if dictionary:
+        os.system("hashcat -a 0 -m 1000 -w 3 -o /tmp/ShrLck_Password.txt "+hsh+" password.lst")
+
     if charset == '?d':
         os.system("hashcat -a 3 -m 1000 -w 3 -i --increment-min "+minlen+" -o /tmp/ShrLck_Password.txt "+hsh+" "+(charset*int(maxlen)))
         os.system("hashcat -m 1000 --show "+hsh+" > /tmp/ShrLck_Password.txt")
     else:
-        os.system("hashcat -a 0 -m 1000 -w 3 -o /tmp/ShrLck_Password.txt "+hsh+" /home/jfrans/Hackathon/Forensics/CustomPasswordList.txt")
         os.system("hashcat -m 1000 --show "+hsh+" > /tmp/ShrLck_Password.txt")
     #if input("Wordlist Failed. Would you like to try Brute Force? (y/N): ").lower()=='y':
-    #os.system("hashcat -a 3 -m "+m+" -1 "+charset+" -w 3 -i --increment-min "+minlen+" -o ~/Desktop/Password.txt "+hsh+" "+('?1'*int(maxlen)))
+        os.system("hashcat -a 3 -m 1000 -1 "+charset+" -w 3 -i --increment-min "+minlen+" -o /tmp/ShrLck_Password.txt "+hsh+" "+('?1'*int(maxlen)))
+        os.system("hashcat -m 1000 --show "+hsh+" > /tmp/ShrLck_Password.txt")
 
 syscmd = subprocess.run(["whoami"],stdout=subprocess.PIPE,text=True)
 #user = syscmd.stdout.strip()
